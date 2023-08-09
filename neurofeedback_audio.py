@@ -12,18 +12,26 @@ The neurofeedback protocols described here are inspired by
 
 """
 
-import audiostream
+import pyaudio
 import numpy as np  # Module that simplifies computations on matrices
 import matplotlib.pyplot as plt  # Module used for plotting
 from pylsl import StreamInlet, resolve_byprop  # Module to receive EEG data
 import utils  # Utility functions from muse-lsl
-from audiostream import get_output
-from audiostream.sources.wave import SineSource
 
-# get a output stream where we can play samples
-austream = get_output(channels=1, rate=44100, buffersize=128)
-# create one wave sin() at 220Hz, attach it to our speaker, and play
-sinsource = SineSource(austream, 1000)
+# Initialize PyAudio
+p = pyaudio.PyAudio()
+
+# Set up audio stream for playback
+sample_rate = 44100
+stream = p.open(format=pyaudio.paFloat32,
+                channels=1,
+                rate=sample_rate,
+                output=True)
+
+def play_tone(frequency):
+    t = np.linspace(0, EPOCH_LENGTH, int(sample_rate * EPOCH_LENGTH))
+    tone = np.sin(2 * np.pi * frequency * t)
+    return tone
 
 freqs = [100 * (2**(1/4))**i for i in range(20)]
 freqs = freqs[::-1]
@@ -104,8 +112,6 @@ if __name__ == "__main__":
     # script with <Ctrl-C>
     print('Press Ctrl-C in the console to break the while loop.')
 
-    sinsource.start()
-
     try:
         # The following loop acquires data, computes band powers, and calculates neurofeedback metrics based on those band powers
         while True:
@@ -144,10 +150,11 @@ if __name__ == "__main__":
 
             # Alpha Protocol:
             # Simple redout of alpha power, divided by delta waves in order to rule out noise
-            alpha_metric = smooth_band_powers[Band.Alpha] / \
-                smooth_band_powers[Band.Delta]
+            # Compute alpha metric and play tone
+            alpha_metric = smooth_band_powers[2] / smooth_band_powers[0]
             fq = int(freqs[np.searchsorted(alphametric_bins, alpha_metric)])
-            sinsource.frequency = fq
+            tone = play_tone(fq)
+            stream.write(tone.astype(np.float32).tobytes())
             print('Alpha Relaxation: ', alpha_metric, ' Freq: ', fq)
 
             # Beta Protocol:
@@ -166,4 +173,7 @@ if __name__ == "__main__":
 
     except KeyboardInterrupt:
         print('Closing!')
-        sinsource.stop()
+        # Stop and close audio stream
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
